@@ -2,14 +2,6 @@ defaults:
   - optim: adam
   - tasks:
       - mnli
-      - cola
-      - mrpc
-      - qnli
-      - qqp
-      - rte
-      - sst2
-      - stsb
-#      - wnli
 
 optim:
   lr: 4e-5

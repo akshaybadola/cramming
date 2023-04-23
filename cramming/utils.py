@@ -198,21 +198,42 @@ def find_pretrained_checkpoint(cfg, downstream_classes=None):
         checkpoint_name = cfg.eval.checkpoint
 
     if checkpoint_name is not None:
-        # Load these checkpoints locally, might not be a huggingface model
-        tokenizer = tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint_name)
-        with open(os.path.join(checkpoint_name, "model_config.json"), "r") as file:
-            cfg_arch = OmegaConf.create(json.load(file))  # Could have done pure hydra here, but wanted interop
+        if checkpoint_name.endswith(".pth"):
+            state = torch.load(checkpoint_name, map_location="cpu")
+            if isinstance(state, list):
+                tokenizer_name = state[3]['tokenizer_name']
+            else:
+                tokenizer_name = state['state']['tokenizer_name']
+            tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
+            maybe_model_config = os.path.dirname(checkpoint_name) + "/model_config.json"
+            maybe_model_config = os.path.exists(maybe_model_config) or \
+                os.path.dirname(os.path.dirname(checkpoint_name)) + "/model_config.json"
+            if os.path.exists(maybe_model_config):
+                with open(os.path.join(checkpoint_name, "model_config.json"), "r") as file:
+                    cfg_arch = OmegaConf.create(json.load(file))
+            elif "arch" in cfg:
+                cfg_arch = cfg.arch
+            else:
+                raise AttributeError("Could not determine model architecture")
+            if cfg.eval.arch_modifications is not None:
+                cfg_arch = OmegaConf.merge(cfg_arch, cfg.eval.arch_modifications)
+            model_file = checkpoint_name
+        else:
+            # Load these checkpoints locally, might not be a huggingface model
+            tokenizer = tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint_name)
+            with open(os.path.join(checkpoint_name, "model_config.json"), "r") as file:
+                cfg_arch = OmegaConf.create(json.load(file))  # Could have done pure hydra here, but wanted interop
 
-        # Use merge from default config to build in new arguments
-        # with hydra.initialize(config_path="config/arch"):
-        # cfg_default = OmegaConf.load(os.path.join(cfg.original_cwd, "cramming/config/arch/bert-base.yaml"))
-        # cfg_arch = OmegaConf.merge(cfg_default, cfg_arch)
+            # Use merge from default config to build in new arguments
+            # with hydra.initialize(config_path="config/arch"):
+            # cfg_default = OmegaConf.load(os.path.join(cfg.original_cwd, "cramming/config/arch/bert-base.yaml"))
+            # cfg_arch = OmegaConf.merge(cfg_default, cfg_arch)
 
-        # Optionally modify parts of the arch at eval time. This is not guaranteed to be a good idea ...
-        # All mismatched parameters will be randomly initialized ...
-        if cfg.eval.arch_modifications is not None:
-            cfg_arch = OmegaConf.merge(cfg_arch, cfg.eval.arch_modifications)
-        model_file = os.path.join(checkpoint_name, "model.pth")
+            # Optionally modify parts of the arch at eval time. This is not guaranteed to be a good idea ...
+            # All mismatched parameters will be randomly initialized ...
+            if cfg.eval.arch_modifications is not None:
+                cfg_arch = OmegaConf.merge(cfg_arch, cfg.eval.arch_modifications)
+            model_file = os.path.join(checkpoint_name, "model.pth")
 
         print(cfg_arch)
 

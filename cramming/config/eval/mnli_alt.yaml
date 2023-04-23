@@ -2,17 +2,10 @@ defaults:
   - optim: adam
   - tasks:
       - mnli
-      - cola
-      - mrpc
-      - qnli
-      - qqp
-      - rte
-      - sst2
-      - stsb
-#      - wnli
 
+# Best so far with batch_size = 4096
 optim:
-  lr: 4e-5
+  lr: 0.001
 
 evaluation_set: validation # always keep this at validation except for the final run
 
@@ -24,7 +17,7 @@ max_seq_length: 128
 
 # Default options:
 # These can be overwritten by specific tasks
-batch_size: 16
+batch_size: 512
 batch_size_ramp: 0
 
 gradient_clipping:

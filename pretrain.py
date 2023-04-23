@@ -61,7 +61,7 @@ def main_training_process(cfg, setup):
                 log.info("Loss higher than allowed threshold. Stopping training early...")
 
         # Checkpointing is triggered from stopping criteria and normal intervals
-        if cfg.impl.save_intermediate_checkpoints and step % cfg.impl.save_every_nth_step == 0:
+        if cfg.impl.save_intermediate_checkpoints and not (step+1) % cfg.impl.save_every_nth_step:
             state = dict(step=step, tokenizer_name=tokenizer.name_or_path)
             checkpoint_id = loss.item()
             if cramming.utils.is_main_process():
@@ -83,7 +83,8 @@ def main_training_process(cfg, setup):
         # Save final checkpoint:
         now = datetime.datetime.now()
         checkpoint_id = f"{''.join(cfg.arch.architectures)}_{now.strftime('%Y-%m-%d')}_{loss:2.4f}"
-        model_engine.save_final_model(os.path.join(cfg.base_dir, cfg.name), checkpoint_id, tokenizer, cfg.arch, cfg.dryrun)
+        model_engine.save_final_model(os.path.join(cfg.base_dir, cfg.name),
+                                      checkpoint_id, tokenizer, cfg.arch, cfg.dryrun)
 
 
 def check_deadline(launch_time, hour_limit):

@@ -160,6 +160,7 @@ class PatchedDataCollatorForLanguageModeling(transformers.DataCollatorForLanguag
         super().__init__(*args, **kwargs)
         self.use_80_20_rule = use_80_20_rule
         self.token_drop = token_drop
+        self._torch_version = [*map(int, torch.__version__.split("."))]
 
         self.mask_token = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
 
@@ -218,7 +219,13 @@ class PatchedDataCollatorForLanguageModeling(transformers.DataCollatorForLanguag
             #     block[idx] = example[key]
             out = None
             if torch.utils.data.get_worker_info() is not None:
-                storage = elem._storage()._new_shared(len(examples) * 8 * elem.shape[0], device=elem.device)  # 8 for byte->long
+                if self._torch_version[1] >= 12:
+                    storage = elem._storage()._new_shared(
+                        len(examples) * 8 * elem.shape[0],
+                        device=elem.device)  # 8 for byte->long
+                else:
+                    storage = elem._storage()._new_shared(len(examples) * 8 * elem.shape[0])
+                # storage = elem._storage()._new_shared(len(examples) * 8 * elem.shape[0], device=elem.device)  # 8 for byte->long
                 # storage = elem.untyped_storage()._new_shared(len(examples) * 8 * elem.shape[0], device=elem.device)  # 8 for byte->long
                 # out = elem.new(storage).resize_(len(examples), elem.shape[0])
                 # storage = elem._typed_storage()._new_shared(len(examples) * elem.shape[0], device=elem.device) # this will be pytorch 2.0

@@ -6,6 +6,7 @@ from .funnel_transformers import construct_scriptable_funnel
 from .recurrent_transformers import construct_scriptable_recurrent
 from .sanity_check import SanityCheckforPreTraining
 from .fixed_cramlm import construct_fixed_cramlm
+from .parallel_masked_lm import construct_parallel_masked_lm
 
 import logging
 from ..utils import is_main_process
@@ -17,7 +18,9 @@ def construct_model(cfg_arch, vocab_size, downstream_classes=None):
     model = None
     if cfg_arch.architectures is not None:
         # attempt to solve locally
-        if "ScriptableMaskedLM" in cfg_arch.architectures:
+        if "ParallelMaskedLM" in cfg_arch.architectures:
+            model = construct_parallel_masked_lm(cfg_arch, vocab_size, downstream_classes)
+        elif "ScriptableMaskedLM" in cfg_arch.architectures:
             model = construct_scriptable_bert(cfg_arch, vocab_size, downstream_classes)
         elif "ScriptableFunnelLM" in cfg_arch.architectures:
             model = construct_scriptable_funnel(cfg_arch, vocab_size, downstream_classes)

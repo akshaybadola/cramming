@@ -292,8 +292,11 @@ class TorchEngine(torch.nn.Module):
                 self.optimizer.load_state_dict(optim_state)
                 self.scheduler.load_state_dict(scheduler_state)
             else:
-
-                model_state = torch.load(file, map_location=self.setup["device"])
+                saved_state = torch.load(file, map_location=self.setup["device"])
+                if set(saved_state.keys()) == set(['optim_state', 'model_state', 'scheduler_state', 'state']):
+                    model_state = saved_state['model_state']
+                else:
+                    model_state = saved_state
                 try:
                     sanitized_state = {}
                     for k, v in model_state.items():
@@ -320,7 +323,11 @@ class TorchEngine(torch.nn.Module):
         optim_state = self.optimizer.state_dict()
         model_state = self.retrieve_model_state_dict()
         scheduler_state = self.scheduler.state_dict()
-        torch.save([optim_state, model_state, scheduler_state, state], file)
+        torch.save({"optim_state": optim_state,
+                    "model_state": model_state,
+                    "scheduler_state": scheduler_state,
+                    "state": state}, file)
+        print(f"Saved checkpoint to {file}")
 
     def save_final_model(self, base_directory, identifier, tokenizer, cfg_arch, dryrun=False):
         """This checkpoint can be used for downstream tasks.

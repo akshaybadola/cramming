@@ -28,6 +28,9 @@ def main_downstream_process(cfg, setup):
     # Start the clocks now:
     for task_name, task in tasks.items():
         cfg.eval.steps = len(task["trainloader"]) * cfg.eval.epochs
+        if cfg.eval.batch_size < cfg.impl.microbatch_size:
+            cfg.eval.batch_size = cfg.impl.microbatch_size
+            log.warning(f"Setting batchsize to microbatch_size {cfg.impl.microbatch_size}")
         log.info(f"Finetuning task {task_name} with {task['num_classes']} classes for {cfg.eval.steps} steps.")
         # Prepare model for finetuning:
         model = cramming.construct_model(cfg_arch, tokenizer.vocab_size, downstream_classes=task["num_classes"])
