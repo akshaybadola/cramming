@@ -1,6 +1,7 @@
 """Basic transformer components."""
 
 import torch
+import torch.nn as nn
 
 from typing import Optional, Tuple
 
@@ -78,6 +79,7 @@ class FFNComponent(torch.nn.Module):
         else:
             intermed_output_size = intermed_size
         self.dense_out = torch.nn.Linear(intermed_output_size, hidden_size, bias=use_bias)
+        self.swish_w = nn.Linear(hidden_size, hidden_size)
 
     def forward(self, hidden_states):
         return self.dense_out(self.nonlin(self.dense_in(hidden_states)))
@@ -216,8 +218,23 @@ class PredictionHeadComponent(torch.nn.Module):
         return hidden_states
 
 
+class IDBlock(nn.Module):
+    def __init__(self, idx, cfg_arch):
+        super().__init__()
+        self.block = TransformerLayer(idx, cfg_arch)
+        self.w = nn.Linear(cfg_arch.hidden_size, cfg_arch.hidden_size)
+        self.silu = nn.SiLU()
+        self.LAYOUT = self.block.LAYOUT
+
+    def forward(self, states, attention_mask, res_scale=1):
+        states = self.block(states, attention_mask, res_scale)
+        return self.w(self.silu(states) * states)
+
+
 def _get_layer_fn(layer_macro_type):
-    if layer_macro_type == "transformer":
+    if layer_macro_type == "idblock":
+        return IDBlock
+    elif layer_macro_type == "transformer":
         return TransformerLayer
     elif layer_macro_type == "FLASH":
         return FLASHLayer

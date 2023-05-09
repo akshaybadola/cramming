@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+import torch.nn as nn
 
 from transformers import PretrainedConfig, PreTrainedModel
 from omegaconf import OmegaConf
@@ -25,7 +26,6 @@ def construct_parallel_masked_lm(cfg_arch, vocab_size, downstream_classes=None):
     else:
         model = ScriptableLMForSequenceClassification(config)
     return model
-
 
 class ParallelMaskedLM(torch.nn.Module):
     def __init__(self, cfg_arch):
