@@ -169,7 +169,7 @@ def num_processes():
     return num_procs
 
 
-def find_pretrained_checkpoint(cfg, downstream_classes=None):
+def find_pretrained_checkpoint(cfg, *, downstream_classes=None, tokenizer_path=None):
     """Load a checkpoint either locally or from the internet."""
     local_checkpoint_folder = os.path.join(cfg.base_dir, cfg.name, "checkpoints")
     if cfg.eval.checkpoint == "latest":
@@ -200,10 +200,13 @@ def find_pretrained_checkpoint(cfg, downstream_classes=None):
     if checkpoint_name is not None:
         if checkpoint_name.endswith(".pth"):
             state = torch.load(checkpoint_name, map_location="cpu")
-            if isinstance(state, list):
-                tokenizer_name = state[3]['tokenizer_name']
+            if tokenizer_path:
+                if isinstance(state, list):
+                    tokenizer_name = state[3]['tokenizer_name']
+                else:
+                    tokenizer_name = state['state']['tokenizer_name']
             else:
-                tokenizer_name = state['state']['tokenizer_name']
+                tokenizer_name = tokenizer_path
             tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
             maybe_model_config = os.path.dirname(checkpoint_name) + "/model_config.json"
             maybe_model_config = os.path.exists(maybe_model_config) or \
