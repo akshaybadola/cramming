@@ -200,7 +200,7 @@ def find_pretrained_checkpoint(cfg, *, downstream_classes=None, tokenizer_path=N
     if checkpoint_name is not None:
         if checkpoint_name.endswith(".pth"):
             state = torch.load(checkpoint_name, map_location="cpu")
-            if tokenizer_path:
+            if tokenizer_path is None:
                 if isinstance(state, list):
                     tokenizer_name = state[3]['tokenizer_name']
                 else:

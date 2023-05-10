@@ -20,7 +20,7 @@ def load_fixing_names(model, state_dict):
 
 
 def get_model(arch, checkpoint_path, tokenizer_path):
-    cfg = hydra.compose(config_name="cfg_eval", overrides=["arch=bert-c5"])
+    cfg = hydra.compose(config_name="cfg_eval", overrides=[f"arch={arch}"])
     cfg.eval.checkpoint = checkpoint_path
     tokenizer, cfg_arch, model_file = utils.find_pretrained_checkpoint(cfg, tokenizer_path=tokenizer_path)
     model = cramming.construct_model(cfg_arch, tokenizer.vocab_size)
