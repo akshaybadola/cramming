@@ -44,7 +44,7 @@ class CollectOutputs:
     def collect_hook(self, module_name, *x):
         if module_name not in self._results:
             self._results[module_name] = []
-        self._results[module_name].append((x[0], x[1].detach().cpu(), x[2].detach().cpu()))
+        self._results[module_name].append((x[0], x[1], x[2]))
 
     def add_collect_hook(self, module_names):
         if self._handles:
