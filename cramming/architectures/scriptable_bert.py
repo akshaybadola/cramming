@@ -47,7 +47,7 @@ class ScriptableLM(PreTrainedModel):
 
     config_class = crammedBertConfig
 
-    def __init__(self, config):
+    def __init__(self, config, results=None):
         super().__init__(config)
         self.cfg = OmegaConf.create(config.arch)  # this could be nicer ...
 
@@ -68,6 +68,12 @@ class ScriptableLM(PreTrainedModel):
             core_block = Sequential([layer_fn(idx, self.cfg) for idx in range(self.cfg.recurrent_layers)])
             self.layers = torch.nn.ModuleList([core_block for _ in range(self.cfg.num_transformer_layers)])
 
+        if results is not None:
+            for i, layer in enumerate(self.layers):
+                results[i] = []
+                layer._results = results[i]
+                layer.attn._results = results[i]
+                layer.attn.self_attention._results = results[i]
         if self.cfg.final_norm:
             self.final_norm = _get_norm_fn(self.cfg.norm)(self.cfg.hidden_size, eps=self.cfg.norm_eps)
         else:
@@ -142,7 +148,8 @@ class ScriptableLMForPreTraining(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.cfg = OmegaConf.create(config.arch)  # this could be nicer ...
-        self.encoder = ScriptableLM(config)
+        self._results = {}
+        self.encoder = ScriptableLM(config, self._results)
         if not self.cfg.skip_head_transform:
             self.prediction_head = PredictionHeadComponent(self.cfg)
         else:

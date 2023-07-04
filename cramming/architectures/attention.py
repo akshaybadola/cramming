@@ -1,4 +1,5 @@
 """Attention modules. Most code heavily stolen from the GPT-neoX implementation"""
+import typing
 import torch
 from transformers.models.bert.modeling_bert import BertSelfAttention
 
@@ -6,6 +7,7 @@ from .embeddings import Rotary, RotarySanityCheck, RotaryEleutherAI
 from typing import Optional
 from einops.layers.torch import Rearrange
 from einops import rearrange
+import ipdb
 
 
 def get_attention_mechanism(
@@ -224,13 +226,14 @@ class SeqFirstSelfAttention(torch.nn.Module):
 
         # change view [b * np, sq, sk]
         attention_probs = attention_probs.view(output_size[0] * output_size[1], output_size[2], -1)
+        self._results.append({"scores": attention_scores, "probs": attention_probs})
 
         # matmul: [b * np, sq, hn]
         context_layer = torch.bmm(attention_probs, value_layer.transpose(0, 1))
 
         # change view [b, np, sq, hn]
         context_layer = context_layer.view(*output_size)
-        return context_layer
+        return context_layer    # , attention_scores, attention_probs
 
     def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None):
         # =====================
@@ -256,13 +259,14 @@ class SeqFirstSelfAttention(torch.nn.Module):
         # Attention computation
         # ==================================
         context_layer = self.attention(query_layer, key_layer, value_layer, attention_mask, self.training)
+
         # [b, np, sq, hn] --> [sq, b, np, hn]
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
 
         # [sq, b, np, hn] --> [sq, b, hp]
         # new_context_layer_shape = context_layer.size()[:-2] + (self.hidden_size,)
         context_layer = context_layer.view(context_layer.shape[0], context_layer.shape[1], self.hidden_size)
-        return context_layer
+        return context_layer    # , attention_scores, attention_probs
 
 
 class FlashMultiHeadAttention(torch.nn.Module):

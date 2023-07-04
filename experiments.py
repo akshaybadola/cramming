@@ -75,6 +75,11 @@ def load_fixing_names(model, state_dict):
 def get_model(arch, checkpoint_path, tokenizer_path):
     cfg = hydra.compose(config_name="cfg_eval", overrides=[f"arch={arch}"])
     cfg.eval.checkpoint = checkpoint_path
+    cfg.impl.no_jit_compilation = True
+    cfg.impl.jit_instruction_type = None
+    cfg.arch.layer_fusion = False
+    cfg.arch.attention.high_level_fusion = False
+    cfg.arch.attention.low_level_fusion = False
     tokenizer, cfg_arch, model_file = utils.find_pretrained_checkpoint(cfg, tokenizer_path=tokenizer_path)
     model = cramming.construct_model(cfg_arch, tokenizer.vocab_size)
     state = torch.load(model_file, map_location="cpu")
@@ -94,3 +99,17 @@ def demo(arch, checkpoint_path, tokenizer_path):
     with torch.no_grad():
         output = model(**encoded_input)
     print(collect.get_result_for('encoder.layers.0.attn'))
+
+
+def collect_example():
+    model, tokenizer = get_model("bert-tiny",
+                                 "FULL_WEIGHTS_PATH",
+                                 "FULL_TOKENIZER_PATH")
+    model = model.eval()
+    collect = CollectOutputs(model)
+    collect.add_collect_hook(['encoder.layers.0.attn'])
+    text = "There is a light that"
+    encoded_input = tokenizer(text, return_tensors='pt')
+    with torch.no_grad():
+        output = model(**encoded_input)
+    model._results              # this will have attention scores
