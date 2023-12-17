@@ -140,19 +140,5 @@ def plot_weights():
             plt.ylabel("From")
             plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
 
-def test_bert_with_norm_output():
-    #hydra.initialize(config_path="cramming/config")
-    cfg = hydra.compose(config_name="cfg_eval", overrides=["arch=bert-with-norm-output-tiny"])
-    cfg.eval.checkpoint = "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/2.9051.pth"
-    tokenizer, cfg_arch, model_file = utils.find_pretrained_checkpoint(cfg, tokenizer_path="/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/tokenizer/")
-    #tokenizer = transformers.AutoTokenizer.from_pretrained()
-    model = cramming.construct_model(cfg.arch, tokenizer.vocab_size)
-    state = torch.load(model_file, map_location="cpu")
-    if isinstance(state, list):
-        load_fixing_names(model, state[1])
-    elif isinstance(state, dict):
-        load_fixing_names(model, state["model_state"])
-    return model, tokenizer
-
 results, toks=collect_example()
 print(results)
