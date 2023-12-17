@@ -5,6 +5,11 @@ from functools import partial
 import cramming
 from cramming import utils
 
+import transformers
+
+import matplotlib.pyplot as plt
+import seaborn as sb
+
 
 hydra.initialize(config_path="cramming/config")
 
@@ -75,6 +80,11 @@ def load_fixing_names(model, state_dict):
 def get_model(arch, checkpoint_path, tokenizer_path):
     cfg = hydra.compose(config_name="cfg_eval", overrides=[f"arch={arch}"])
     cfg.eval.checkpoint = checkpoint_path
+    cfg.impl.no_jit_compilation = True
+    cfg.impl.jit_instruction_type = None
+    cfg.arch.layer_fusion = False
+    cfg.arch.attention.high_level_fusion = False
+    cfg.arch.attention.low_level_fusion = False
     tokenizer, cfg_arch, model_file = utils.find_pretrained_checkpoint(cfg, tokenizer_path=tokenizer_path)
     model = cramming.construct_model(cfg_arch, tokenizer.vocab_size)
     state = torch.load(model_file, map_location="cpu")
@@ -94,3 +104,55 @@ def demo(arch, checkpoint_path, tokenizer_path):
     with torch.no_grad():
         output = model(**encoded_input)
     print(collect.get_result_for('encoder.layers.0.attn'))
+
+
+def collect_example():
+    model, tokenizer = get_model("bert-with-norm-output-tiny",
+                                 "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/2.9051.pth",
+                                 "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/tokenizer/")
+
+    #model, tokenizer = test_bert_with_norm_output()
+    model = model.eval()
+    collect = CollectOutputs(model)
+    collect.add_collect_hook(['encoder.layers.0.attn'])
+    text = "The author talked to Sarah about his book"
+    encoded_input = tokenizer(text, return_tensors='pt')
+    print(encoded_input)
+    tokens=tokenizer.convert_ids_to_tokens(encoded_input['input_ids'].tolist()[0])
+    with torch.no_grad():
+        output = model(**encoded_input)
+    return model._results, tokens              # this will have attention scores
+
+def plot_weights():
+    results, toks=collect_example()
+    new_results={key: [item['probs'] for item in value] for key, value in results.items()}
+
+    print(toks)
+
+    for layer, weights_list in new_results.items():
+        for head, weights in enumerate(weights_list[0]):
+            plt.figure(figsize=(10, 8))
+            
+            sb.heatmap(weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
+                      xticklabels=toks, yticklabels=toks)
+            plt.title(f"Layer {layer}, Head {head} - Attention Weights Heatmap")
+            plt.xlabel("To")
+            plt.ylabel("From")
+            plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
+
+def test_bert_with_norm_output():
+    #hydra.initialize(config_path="cramming/config")
+    cfg = hydra.compose(config_name="cfg_eval", overrides=["arch=bert-with-norm-output-tiny"])
+    cfg.eval.checkpoint = "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/2.9051.pth"
+    tokenizer, cfg_arch, model_file = utils.find_pretrained_checkpoint(cfg, tokenizer_path="/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/tokenizer/")
+    #tokenizer = transformers.AutoTokenizer.from_pretrained()
+    model = cramming.construct_model(cfg.arch, tokenizer.vocab_size)
+    state = torch.load(model_file, map_location="cpu")
+    if isinstance(state, list):
+        load_fixing_names(model, state[1])
+    elif isinstance(state, dict):
+        load_fixing_names(model, state["model_state"])
+    return model, tokenizer
+
+results, toks=collect_example()
+print(results)

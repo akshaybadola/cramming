@@ -3,6 +3,8 @@ import torch
 
 # import torchdynamo  # need to disable dynamo in dynamic parts
 
+from omegaconf import OmegaConf
+
 from typing import Optional
 
 from .components import (
@@ -14,7 +16,6 @@ from .components import (
     PoolingComponent,
     PredictionHeadComponent,
 )
-
 
 def construct_fixed_cramlm(cfg_arch, vocab_size, downstream_classes=None):
     """See the config file for details on what is possible."""
