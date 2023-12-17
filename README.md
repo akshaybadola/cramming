@@ -24,6 +24,7 @@ Setting:
 # How to run the code
 
 ## Requirements:
+* Python 3.8 (use a `venv`)
 * PyTorch: `torch` (at least version 1.12)
 * huggingface: `transformers`, `tokenizers`, `datasets`
 * `hydra-core`
