@@ -81,7 +81,9 @@ class BertAttentionWrapper(BertSelfAttention):
         self.output_dim = hidden_size
 
     def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None, output_norms: Optional[bool] = True): # Kobayashi
-        return super().forward(hidden_states, attention_mask, output_norms)[0]
+        output = super().forward(hidden_states, attention_mask, output_norms=output_norms)
+        self._results.append({"scores": output[0], "probs": output[1]})
+        return output[0]
 
 
 class SelfAttentionPyTorch(torch.nn.Module):

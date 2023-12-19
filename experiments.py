@@ -5,8 +5,6 @@ from functools import partial
 import cramming
 from cramming import utils
 
-import transformers
-
 import matplotlib.pyplot as plt
 import seaborn as sb
 
@@ -117,7 +115,6 @@ def collect_example():
     collect.add_collect_hook(['encoder.layers.0.attn'])
     text = "The author talked to Sarah about his book"
     encoded_input = tokenizer(text, return_tensors='pt')
-    print(encoded_input)
     tokens=tokenizer.convert_ids_to_tokens(encoded_input['input_ids'].tolist()[0])
     with torch.no_grad():
         output = model(**encoded_input)
