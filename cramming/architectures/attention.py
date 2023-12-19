@@ -82,7 +82,7 @@ class BertAttentionWrapper(BertSelfAttention):
 
     def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None, output_norms: Optional[bool] = True): # Kobayashi
         output = super().forward(hidden_states, attention_mask, output_norms=output_norms)
-        self._results.append({"scores": output[0], "probs": output[1]})
+        self._results.append({"scores": output[0], "probs": output[1].squeeze(0)})
         return output[0]
 
 

@@ -129,7 +129,6 @@ def plot_weights():
     for layer, weights_list in new_results.items():
         for head, weights in enumerate(weights_list[0]):
             plt.figure(figsize=(10, 8))
-            
             sb.heatmap(weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
                       xticklabels=toks, yticklabels=toks)
             plt.title(f"Layer {layer}, Head {head} - Attention Weights Heatmap")
@@ -137,5 +136,4 @@ def plot_weights():
             plt.ylabel("From")
             plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
 
-results, toks=collect_example()
-print(results)
+plot_weights()
