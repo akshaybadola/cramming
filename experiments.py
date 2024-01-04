@@ -8,6 +8,8 @@ from cramming import utils
 import matplotlib.pyplot as plt
 import seaborn as sb
 
+plt.rcParams['savefig.facecolor']='white'
+
 
 hydra.initialize(config_path="cramming/config")
 
@@ -113,7 +115,7 @@ def collect_example():
     model = model.eval()
     collect = CollectOutputs(model)
     collect.add_collect_hook(['encoder.layers.0.attn'])
-    text = "The author talked to Sarah about his book"
+    text = "There is a light that"
     encoded_input = tokenizer(text, return_tensors='pt')
     tokens=tokenizer.convert_ids_to_tokens(encoded_input['input_ids'].tolist()[0])
     with torch.no_grad():
@@ -127,13 +129,53 @@ def plot_weights():
     print(toks)
 
     for layer, weights_list in new_results.items():
+        print(weights_list[0])
         for head, weights in enumerate(weights_list[0]):
+            print(weights.size())
             plt.figure(figsize=(10, 8))
             sb.heatmap(weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
                       xticklabels=toks, yticklabels=toks)
             plt.title(f"Layer {layer}, Head {head} - Attention Weights Heatmap")
             plt.xlabel("To")
             plt.ylabel("From")
-            plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
+            plt.savefig('multi_headed_hist_plots_2/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
+            plt.close()
 
-plot_weights()
+def plot_combined_weights_mean():
+    results, toks=collect_example()
+    new_results={key: [item['probs'] for item in value] for key, value in results.items()}
+
+    print(toks)
+
+    for layer, weights_list in new_results.items():
+        print(weights_list[0].size())
+        combined_weights = torch.mean(weights_list[0], dim = 0)
+        plt.figure(figsize=(10, 8))
+        sb.heatmap(combined_weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
+                      xticklabels=toks, yticklabels=toks)
+        plt.title(f"Layer {layer}- Attention Weights Heatmap")
+        plt.xlabel("To")
+        plt.ylabel("From")
+        plt.savefig('multi_headed_hist_plots_2/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
+        plt.close()
+
+def plot_combined_weights_weighted_mean():
+    results, toks=collect_example()
+    new_results={key: [item['probs'] for item in value] for key, value in results.items()}
+
+    print(toks)
+
+    for layer, weights_list in new_results.items():
+        weights_coefficients = torch.nn.Parameter(torch.rand(12))
+        weights_coefficients = torch.nn.Softmax(dim = 0)(weights_coefficients)
+        combined_weights = torch.sum(weights_list[0] * weights_coefficients.view(12, 1, 1), dim = 0)
+        plt.figure(figsize=(10, 8))
+        sb.heatmap(combined_weights.detach().numpy(), annot=True, fmt=".2f", cmap="viridis",
+                      xticklabels=toks, yticklabels=toks)
+        plt.title(f"Layer {layer}- Attention Weights Heatmap")
+        plt.xlabel("To")
+        plt.ylabel("From")
+        plt.savefig('multi_headed_hist_plots_3/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
+        plt.close()
+
+plot_combined_weights_weighted_mean()
