@@ -153,29 +153,10 @@ def plot_combined_weights_mean():
         plt.figure(figsize=(10, 8))
         sb.heatmap(combined_weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
                       xticklabels=toks, yticklabels=toks)
-        plt.title(f"Layer {layer}- Attention Weights Heatmap")
+        plt.title(f"Layer {layer + 1}- Attention Weights Heatmap")
         plt.xlabel("To")
         plt.ylabel("From")
         plt.savefig('multi_headed_hist_plots_2/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
         plt.close()
 
-def plot_combined_weights_weighted_mean():
-    results, toks=collect_example()
-    new_results={key: [item['probs'] for item in value] for key, value in results.items()}
-
-    print(toks)
-
-    for layer, weights_list in new_results.items():
-        weights_coefficients = torch.nn.Parameter(torch.rand(12))
-        weights_coefficients = torch.nn.Softmax(dim = 0)(weights_coefficients)
-        combined_weights = torch.sum(weights_list[0] * weights_coefficients.view(12, 1, 1), dim = 0)
-        plt.figure(figsize=(10, 8))
-        sb.heatmap(combined_weights.detach().numpy(), annot=True, fmt=".2f", cmap="viridis",
-                      xticklabels=toks, yticklabels=toks)
-        plt.title(f"Layer {layer}- Attention Weights Heatmap")
-        plt.xlabel("To")
-        plt.ylabel("From")
-        plt.savefig('multi_headed_hist_plots_3/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
-        plt.close()
-
-plot_combined_weights_weighted_mean()
+plot_combined_weights_mean()
