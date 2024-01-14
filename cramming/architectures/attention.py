@@ -76,8 +76,7 @@ class BertAttentionWrapper(BertAttention):
         config.num_attention_heads = cfg_attention.num_attention_heads
         config.attention_probs_dropout_prob = cfg_attention.dropout_prob
         config.is_decoder = False
-
-        # If parent is BertAttention
+        
         config.layer_norm_eps = 1e-06
         config.hidden_dropout_prob = 0.1
 
