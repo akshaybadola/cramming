@@ -1,7 +1,7 @@
 """Attention modules. Most code heavily stolen from the GPT-neoX implementation"""
 import typing
 import torch
-from transformers.models.bert.modeling_bert import BertSelfAttention
+from transformers.models.bert.modeling_bert import BertAttention
 
 from .embeddings import Rotary, RotarySanityCheck, RotaryEleutherAI
 from typing import Optional
@@ -63,7 +63,7 @@ class Identity(torch.nn.Module):
         return hidden_states
 
 
-class BertAttentionWrapper(BertSelfAttention):
+class BertAttentionWrapper(BertAttention):
     """mini wrapper around BERT attention from huggingface for sanity checks."""
 
     LAYOUT = "[B S H]"
@@ -77,12 +77,16 @@ class BertAttentionWrapper(BertSelfAttention):
         config.attention_probs_dropout_prob = cfg_attention.dropout_prob
         config.is_decoder = False
 
+        # If parent is BertAttention
+        config.layer_norm_eps = 1e-06
+        config.hidden_dropout_prob = 0.1
+
         super().__init__(config)
         self.output_dim = hidden_size
 
     def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None, output_norms: Optional[bool] = True): # Kobayashi
         output = super().forward(hidden_states, attention_mask, output_norms=output_norms)
-        self._results.append({"scores": output[0], "probs": output[1].squeeze(0)})
+        self._results.append({"scores": output[0], "probs": output[1].squeeze(0), "norms": output[5].squeeze(0)})
         return output[0]
 
 

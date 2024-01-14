@@ -7,6 +7,7 @@ from cramming import utils
 
 import matplotlib.pyplot as plt
 import seaborn as sb
+import pandas as pd
 
 plt.rcParams['savefig.facecolor']='white'
 
@@ -138,25 +139,24 @@ def plot_weights():
             plt.title(f"Layer {layer}, Head {head} - Attention Weights Heatmap")
             plt.xlabel("To")
             plt.ylabel("From")
-            plt.savefig('multi_headed_hist_plots_2/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
+            plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
             plt.close()
 
 def plot_combined_weights_mean():
     results, toks=collect_example()
-    new_results={key: [item['probs'] for item in value] for key, value in results.items()}
+    new_results={key: [item['norms'] for item in value] for key, value in results.items()}
 
     print(toks)
-
-    for layer, weights_list in new_results.items():
-        print(weights_list[0].size())
-        combined_weights = torch.mean(weights_list[0], dim = 0)
+    for layer, norms_list in new_results.items():
         plt.figure(figsize=(10, 8))
-        sb.heatmap(combined_weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
-                      xticklabels=toks, yticklabels=toks)
-        plt.title(f"Layer {layer + 1}- Attention Weights Heatmap")
+        df = pd.DataFrame(norms_list[0].numpy(), columns = toks, index = toks)
+        #sb.heatmap(norms_list[0].numpy(), annot=True, fmt=".2f", cmap="viridis",
+        #              xticklabels=toks, yticklabels=toks)
+        sb.heatmap(df, annot=True, fmt=".2f", cmap="viridis")
+        plt.title(f"Layer {layer + 1}- Norm Attention Weights Heatmap")
         plt.xlabel("To")
         plt.ylabel("From")
-        plt.savefig('multi_headed_hist_plots_2/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
+        plt.savefig('heatmaps/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
         plt.close()
 
 plot_combined_weights_mean()
