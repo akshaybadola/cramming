@@ -33,6 +33,7 @@ from torch.nn import CrossEntropyLoss, MSELoss
 
 from ...activations import gelu, gelu_new, swish
 from .configuration_bert import BertConfig
+from ...pytorch_utils import apply_chunking_to_forward
 from ...file_utils import add_code_sample_docstrings, add_start_docstrings, add_start_docstrings_to_callable
 from ...modeling_utils import PreTrainedModel, find_pruneable_heads_and_indices, prune_linear_layer
 
@@ -302,6 +303,20 @@ class BertNormOutput(nn.Module): # This class is added by Goro Kobayashi
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
+        self.res = None
+        self.attn = None
+    
+    def get_attn(self):
+        return self.attn
+    
+    def set_attn(self, attn):
+        self.attn = attn
+    
+    def get_residual(self):
+        return self.res
+    
+    def set_residual(self, residual):
+        self.res = residual
 
     def forward(self, hidden_states, attention_probs, value_layer, dense, LayerNorm, pre_ln_states):
         # Args:
@@ -326,6 +341,7 @@ class BertNormOutput(nn.Module): # This class is added by Goro Kobayashi
             # Sum each weighted vectors αf(x) over all heads:
             # (batch, seq_length, seq_length, all_head_size)
             summed_weighted_layer = weighted_layer.sum(dim=1)
+            self.set_attn(summed_weighted_layer)
             summed_weighted_norm = torch.norm(summed_weighted_layer, dim=-1)
 
             """ここからがnew"""
@@ -333,6 +349,7 @@ class BertNormOutput(nn.Module): # This class is added by Goro Kobayashi
             hidden_shape = hidden_states.size()  #(batch, seq_length, all_head_size)
             device = hidden_states.device
             residual = torch.einsum('sk,bsd->bskd', torch.eye(hidden_shape[1]).to(device), hidden_states)
+            self.set_residual(residual)
 
             # Make matrix of summed weighted vector + residual vectors
             residual_weighted_layer = summed_weighted_layer + residual
@@ -386,7 +403,7 @@ class BertNormOutput(nn.Module): # This class is added by Goro Kobayashi
                     attnres_n_mixing_ratio,    # Mixing ratio for AttnRes-N
                     attnresln_n_mixing_ratio,  # Mixing ratio for AttnResLn-N
                     )
-        return outputs
+        return outputs, self.get_attn(), self.get_residual()
 
 
 class BertAttention(nn.Module):
@@ -445,7 +462,7 @@ class BertAttention(nn.Module):
         if output_norms:
             _, attention_probs, value_layer = self_outputs
             attention_output, pre_ln_states = attention_output
-            norms_outputs = self.norm(
+            norms_outputs, attn, residual = self.norm(
                 hidden_states, 
                 attention_probs, 
                 value_layer, 
@@ -453,17 +470,19 @@ class BertAttention(nn.Module):
                 self.output.LayerNorm, 
                 pre_ln_states,
             )
-            outputs = (attention_output, attention_probs,) + norms_outputs # add attentions and norms if we output them
+            outputs = (attention_output, attention_probs,) + (attn,) + norms_outputs + (residual,) # add attentions and norms if we output them
             """
             # outputs: 
                 attention_output
-                attebtion_probs
+                attention_probs
+                summed_weighted_layer
                 transformed_norm
                 summed_weighted_norm
                 residual_weighted_norm
                 post_ln_norm
                 before_ln_mixing_ratio
                 post_ln_mixing_ratio
+                residual_term
             """
             return outputs
         #-------------------------------
@@ -482,8 +501,8 @@ class BertIntermediate(nn.Module):
             self.intermediate_act_fn = config.hidden_act
 
     def forward(self, hidden_states):
-        hidden_states = self.dense(hidden_states)
-        hidden_states = self.intermediate_act_fn(hidden_states)
+        hidden_states = self.dense(hidden_states) # W_in(x)
+        hidden_states = self.intermediate_act_fn(hidden_states) # G(W_in(x))
         return hidden_states
 
 
@@ -497,13 +516,17 @@ class BertOutput(nn.Module):
     def forward(self, hidden_states, input_tensor):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        return hidden_states
+        hidden_states = hidden_states + input_tensor
+        res_hidden_states = hidden_states
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states, res_hidden_states
 
 
 class BertLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.chunk_size_feed_forward = 0
+        self.seq_len_dim = 1
         self.attention = BertAttention(config)
         self.is_decoder = config.is_decoder
         if self.is_decoder:
@@ -538,11 +561,28 @@ class BertLayer(nn.Module):
             )
             attention_output = cross_attention_outputs[0]
             outputs = outputs + cross_attention_outputs[1:]  # add cross attentions if we output attention weights
+        
+        attn, res = outputs[1], outputs[-1]
 
-        intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output)
-        outputs = (layer_output,) + outputs
+        attnres = attn + res
+        _, inattn = self.output(self.intermediate(attn), attnres)
+        inattn_norm = torch.norm(inattn, dim=-1)
+        _, inattn_inres = self.output(self.intermediate(res), inattn)
+        inattn_inres_norm = torch.norm(inattn_inres, dim=-1)
+        _, inattnres = self.output(self.intermediate(attnres), attnres)
+        inattnres_norm = torch.norm(inattnres, dim=-1)
+        
+        layer_output = apply_chunking_to_forward(
+            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
+        )
+
+        outputs = (layer_output,) + outputs + (inattn_norm, inattn_inres_norm, inattnres_norm,)
         return outputs
+    
+    def feed_forward_chunk(self, attention_output):
+        intermediate_output = self.intermediate(attention_output)
+        layer_output, _ = self.output(intermediate_output, attention_output)
+        return layer_output
 
 
 class BertEncoder(nn.Module):

@@ -47,9 +47,10 @@ class EmbeddingComponent(torch.nn.Module):
 
 
 class AttentionComponent(torch.nn.Module):
-    def __init__(self, idx, hidden_size, cfg_attention, use_bias=True):
+    def __init__(self, idx, hidden_size, cfg_attention, cfg_eps=0, cfg_hidden_dropout_prob=0, use_bias=True):
         super().__init__()
-        self.self_attention = get_attention_mechanism(idx, hidden_size, cfg_attention)
+        self.self_attention = get_attention_mechanism(idx, hidden_size, cfg_attention, cfg_eps = cfg_eps, 
+                                                      cfg_hidden_dropout_prob = cfg_hidden_dropout_prob)
         if cfg_attention.high_level_fusion:
             self.self_attention = torch.jit.script(self.self_attention)
         if cfg_attention.skip_output_projection:

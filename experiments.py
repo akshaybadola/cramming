@@ -107,8 +107,8 @@ def demo(arch, checkpoint_path, tokenizer_path):
     print(collect.get_result_for('encoder.layers.0.attn'))
 
 
-def collect_example():
-    model, tokenizer = get_model("bert-with-norm-output-tiny",
+def collect_example(sent, modtype):
+    model, tokenizer = get_model(modtype,
                                  "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/2.9051.pth",
                                  "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/tokenizer/")
 
@@ -116,7 +116,7 @@ def collect_example():
     model = model.eval()
     collect = CollectOutputs(model)
     collect.add_collect_hook(['encoder.layers.0.attn'])
-    text = "There is a light that"
+    text = sent
     encoded_input = tokenizer(text, return_tensors='pt')
     tokens=tokenizer.convert_ids_to_tokens(encoded_input['input_ids'].tolist()[0])
     with torch.no_grad():
@@ -142,21 +142,34 @@ def plot_weights():
             plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
             plt.close()
 
-def plot_combined_weights_mean():
-    results, toks=collect_example()
-    new_results={key: [item['norms'] for item in value] for key, value in results.items()}
+def plot_combined_weights_mean(sent, modtype):
+    results, toks=collect_example(sent, modtype)
+    if 'norms' in results[0][0].keys():
+        new_results={key: [item['norms'] for item in value] for key, value in results.items()}
+    else:
+        new_results={key: [item['probs'] for item in value] for key, value in results.items()}
 
     print(toks)
     for layer, norms_list in new_results.items():
         plt.figure(figsize=(10, 8))
-        df = pd.DataFrame(norms_list[0].numpy(), columns = toks, index = toks)
+        if len(norms_list[0].size()) == 2:
+            df = pd.DataFrame(norms_list[0].numpy(), columns = toks, index = toks)
+        else:
+            combined_weights = torch.mean(norms_list[0], dim=0)
+            df = pd.DataFrame(combined_weights.numpy(), columns = toks, index = toks)
         #sb.heatmap(norms_list[0].numpy(), annot=True, fmt=".2f", cmap="viridis",
         #              xticklabels=toks, yticklabels=toks)
         sb.heatmap(df, annot=True, fmt=".2f", cmap="viridis")
-        plt.title(f"Layer {layer + 1}- Norm Attention Weights Heatmap")
+        plt.title(f"Layer {layer + 1}- Attention Weights Heatmap")
         plt.xlabel("To")
         plt.ylabel("From")
         plt.savefig('heatmaps/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
         plt.close()
 
-plot_combined_weights_mean()
+def main():
+    sentence = input("Enter the sentence to be tested on: ")
+    model_type = input("Enter the model type: ")
+    plot_combined_weights_mean(sentence, model_type)
+
+if __name__ == '__main__':
+    main()

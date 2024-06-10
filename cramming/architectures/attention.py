@@ -14,6 +14,8 @@ def get_attention_mechanism(
     idx,
     hidden_size,
     cfg_attention,
+    cfg_eps = 0,
+    cfg_hidden_dropout_prob = 0
 ):
     if cfg_attention.type == "self-attention":
         mechanism = SeqFirstSelfAttention(hidden_size, cfg_attention)  # neox
@@ -21,7 +23,7 @@ def get_attention_mechanism(
         # Sanity check 1: [Warning: This includes the output projection twice...]
         mechanism = SelfAttentionPyTorch(hidden_size, cfg_attention)  # torch default
     elif cfg_attention.type == "huggingface":
-        mechanism = BertAttentionWrapper(hidden_size, cfg_attention)  # always includes bias! Set output_norms to True for norm-based analysis
+        mechanism = BertAttentionWrapper(hidden_size, cfg_attention, cfg_eps, cfg_hidden_dropout_prob)  # always includes bias! Set output_norms to True for norm-based analysis
     elif cfg_attention.type == "flash-attention-impl":  # the fast implementation called flash
         mechanism = FlashMultiHeadAttention(hidden_size, cfg_attention)
     elif cfg_attention.type == "fourier":
@@ -68,7 +70,7 @@ class BertAttentionWrapper(BertAttention):
 
     LAYOUT = "[B S H]"
 
-    def __init__(self, hidden_size, cfg_attention):
+    def __init__(self, hidden_size, cfg_attention, cfg_eps, cfg_prob):
         class config:
             pass
 
@@ -77,8 +79,8 @@ class BertAttentionWrapper(BertAttention):
         config.attention_probs_dropout_prob = cfg_attention.dropout_prob
         config.is_decoder = False
         
-        config.layer_norm_eps = 1e-06
-        config.hidden_dropout_prob = 0.1
+        config.layer_norm_eps = cfg_eps
+        config.hidden_dropout_prob = cfg_prob
 
         super().__init__(config)
         self.output_dim = hidden_size

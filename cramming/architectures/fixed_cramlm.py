@@ -40,6 +40,8 @@ class TransformerLayer(torch.nn.Module):
             idx,
             cfg_arch.hidden_size,
             cfg_arch.attention,
+            cfg_arch.norm_eps,
+            cfg_arch.hidden_dropout_prob,
             cfg_arch.use_bias,
         )
         self.ffn = FFNComponent(
