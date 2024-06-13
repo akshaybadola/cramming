@@ -265,6 +265,20 @@ class RobertaNormOutput(nn.Module): # This class is added by Goro Kobayashi
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
+        self.res = None
+        self.attn = None
+    
+    def get_attn(self):
+        return self.attn
+    
+    def set_attn(self, attn):
+        self.attn = attn
+    
+    def get_residual(self):
+        return self.res
+    
+    def set_residual(self, residual):
+        self.res = residual
 
     def forward(self, hidden_states, attention_probs, value_layer, dense, LayerNorm, pre_ln_states):
         # Args:
@@ -289,6 +303,7 @@ class RobertaNormOutput(nn.Module): # This class is added by Goro Kobayashi
             # Sum each weighted vectors αf(x) over all heads:
             # (batch, seq_length, seq_length, all_head_size)
             summed_weighted_layer = weighted_layer.sum(dim=1)
+            self.set_attn(summed_weighted_layer)
             summed_weighted_norm = torch.norm(summed_weighted_layer, dim=-1)
 
             """ここからがnew"""
@@ -296,6 +311,7 @@ class RobertaNormOutput(nn.Module): # This class is added by Goro Kobayashi
             hidden_shape = hidden_states.size()  #(batch, seq_length, all_head_size)
             device = hidden_states.device
             residual = torch.einsum('sk,bsd->bskd', torch.eye(hidden_shape[1]).to(device), hidden_states)
+            self.set_residual(residual)
 
             # Make matrix of summed weighted vector + residual vectors
             residual_weighted_layer = summed_weighted_layer + residual
@@ -349,7 +365,7 @@ class RobertaNormOutput(nn.Module): # This class is added by Goro Kobayashi
                     attnres_n_mixing_ratio,    # Mixing ratio for AttnRes-N
                     attnresln_n_mixing_ratio,  # Mixing ratio for AttnResLn-N
                     )
-        return outputs
+        return outputs, self.get_attn(), self.get_residual()
 
 
 # Copied from transformers.models.bert.modeling_bert.BertAttention with Bert->Roberta
@@ -409,7 +425,7 @@ class RobertaAttention(nn.Module):
         if output_norms:
             _, attention_probs, value_layer = self_outputs
             attention_output, pre_ln_states = attention_output
-            norms_outputs = self.norm(
+            norms_outputs, attn, residual = self.norm(
                 hidden_states, 
                 attention_probs, 
                 value_layer, 
@@ -417,7 +433,7 @@ class RobertaAttention(nn.Module):
                 self.output.LayerNorm, 
                 pre_ln_states,
             )
-            outputs = (attention_output, attention_probs,) + norms_outputs # add attentions and norms if we output them
+            outputs = (attention_output, attention_probs,) + (attn,) + norms_outputs + (residual,) # add attentions and norms if we output them
             """
             # outputs: 
                 attention_output
@@ -447,8 +463,8 @@ class RobertaIntermediate(nn.Module):
             self.intermediate_act_fn = config.hidden_act
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.dense(hidden_states)
-        hidden_states = self.intermediate_act_fn(hidden_states)
+        hidden_states = self.dense(hidden_states) # W_in(x)
+        hidden_states = self.intermediate_act_fn(hidden_states) # G(W_in(x))
         return hidden_states
 
 
@@ -463,8 +479,10 @@ class RobertaOutput(nn.Module):
     def forward(self, hidden_states: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        return hidden_states
+        hidden_states = hidden_states + input_tensor
+        res_hidden_states = hidden_states
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states, res_hidden_states
 
 
 # Copied from transformers.models.bert.modeling_bert.BertLayer with Bert->Roberta
@@ -505,10 +523,20 @@ class RobertaLayer(nn.Module):
             )
             attention_output = cross_attention_outputs[0]
             outputs = outputs + cross_attention_outputs[1:]  # add cross attentions if we output attention weights
+        
+        attn, res = outputs[1], outputs[-1]
+
+        attnres = attn + res
+        _, inattn = self.output(self.intermediate(attn), attnres)
+        inattn_norm = torch.norm(inattn, dim=-1)
+        _, inattn_inres = self.output(self.intermediate(res), inattn)
+        inattn_inres_norm = torch.norm(inattn_inres, dim=-1)
+        _, inattnres = self.output(self.intermediate(attnres), attnres)
+        inattnres_norm = torch.norm(inattnres, dim=-1)
 
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
-        outputs = (layer_output,) + outputs
+        outputs = (layer_output,) + outputs + (inattn_norm, inattn_inres_norm, inattnres_norm,)
         return outputs
 
 
