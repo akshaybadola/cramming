@@ -535,7 +535,7 @@ class RobertaLayer(nn.Module):
         inattnres_norm = torch.norm(inattnres, dim=-1)
 
         intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output)
+        layer_output, _ = self.output(intermediate_output, attention_output)
         outputs = (layer_output,) + outputs + (inattn_norm, inattn_inres_norm, inattnres_norm,)
         return outputs
 
