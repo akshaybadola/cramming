@@ -3,6 +3,8 @@ import torch
 
 # import torchdynamo  # need to disable dynamo in dynamic parts
 
+from omegaconf import OmegaConf
+
 from typing import Optional
 
 from .components import (
@@ -14,7 +16,6 @@ from .components import (
     PoolingComponent,
     PredictionHeadComponent,
 )
-
 
 def construct_fixed_cramlm(cfg_arch, vocab_size, downstream_classes=None):
     """See the config file for details on what is possible."""
@@ -39,6 +40,8 @@ class TransformerLayer(torch.nn.Module):
             idx,
             cfg_arch.hidden_size,
             cfg_arch.attention,
+            cfg_arch.norm_eps,
+            cfg_arch.hidden_dropout_prob,
             cfg_arch.use_bias,
         )
         self.ffn = FFNComponent(

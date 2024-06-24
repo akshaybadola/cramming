@@ -8,6 +8,8 @@ import logging
 from functools import partial
 import time
 
+from typing import Dict, List
+
 import transformers
 
 
@@ -108,13 +110,13 @@ class TorchEngine(torch.nn.Module):
         self.optimizer, self.scheduler = _load_optimizer(model, cfg_train, cfg_impl)
         self.initial_time = time.time()
 
-    def step(self, batch: dict[str, torch.Tensor]):
+    def step(self, batch: Dict[str, torch.Tensor]):
         loss = self.forward(**batch)["loss"]
         self.backward(loss)
         self.optimizer_step()
         return loss.detach()
 
-    def to_device(self, batch: dict[str, torch.Tensor], keys: list[str] = ["input_ids", "labels"]):
+    def to_device(self, batch: Dict[str, torch.Tensor], keys: List[str] = ["input_ids", "labels"]):
         """Move batch of data into device memory."""
         device_batch = {
             k: v.to(device=self.setup["device"], dtype=torch.long if k == "input_ids" else None, non_blocking=True)

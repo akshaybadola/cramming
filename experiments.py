@@ -5,6 +5,12 @@ from functools import partial
 import cramming
 from cramming import utils
 
+import matplotlib.pyplot as plt
+import seaborn as sb
+import pandas as pd
+
+plt.rcParams['savefig.facecolor']='white'
+
 
 hydra.initialize(config_path="cramming/config")
 
@@ -75,6 +81,11 @@ def load_fixing_names(model, state_dict):
 def get_model(arch, checkpoint_path, tokenizer_path):
     cfg = hydra.compose(config_name="cfg_eval", overrides=[f"arch={arch}"])
     cfg.eval.checkpoint = checkpoint_path
+    cfg.impl.no_jit_compilation = True
+    cfg.impl.jit_instruction_type = None
+    cfg.arch.layer_fusion = False
+    cfg.arch.attention.high_level_fusion = False
+    cfg.arch.attention.low_level_fusion = False
     tokenizer, cfg_arch, model_file = utils.find_pretrained_checkpoint(cfg, tokenizer_path=tokenizer_path)
     model = cramming.construct_model(cfg_arch, tokenizer.vocab_size)
     state = torch.load(model_file, map_location="cpu")
@@ -94,3 +105,71 @@ def demo(arch, checkpoint_path, tokenizer_path):
     with torch.no_grad():
         output = model(**encoded_input)
     print(collect.get_result_for('encoder.layers.0.attn'))
+
+
+def collect_example(sent, modtype):
+    model, tokenizer = get_model(modtype,
+                                 "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/2.9051.pth",
+                                 "/home/joydipb01/Documents/sem9/Thesis/norm-analysis-of-transformer-20231026T045237Z-001/norm-analysis-of-transformer/cramming/tokenizer/")
+
+    #model, tokenizer = test_bert_with_norm_output()
+    model = model.eval()
+    collect = CollectOutputs(model)
+    collect.add_collect_hook(['encoder.layers.0.attn'])
+    text = sent
+    encoded_input = tokenizer(text, return_tensors='pt')
+    tokens=tokenizer.convert_ids_to_tokens(encoded_input['input_ids'].tolist()[0])
+    with torch.no_grad():
+        output = model(**encoded_input)
+    return model._results, tokens              # this will have attention scores
+
+def plot_weights():
+    results, toks=collect_example()
+    new_results={key: [item['probs'] for item in value] for key, value in results.items()}
+
+    print(toks)
+
+    for layer, weights_list in new_results.items():
+        print(weights_list[0])
+        for head, weights in enumerate(weights_list[0]):
+            print(weights.size())
+            plt.figure(figsize=(10, 8))
+            sb.heatmap(weights.numpy(), annot=True, fmt=".2f", cmap="viridis",
+                      xticklabels=toks, yticklabels=toks)
+            plt.title(f"Layer {layer}, Head {head} - Attention Weights Heatmap")
+            plt.xlabel("To")
+            plt.ylabel("From")
+            plt.savefig('multi_headed_hist_plots/heatmap_{}_{}.png'.format(layer, head), format='png', transparent=True,dpi=360, bbox_inches='tight')
+            plt.close()
+
+def plot_combined_weights_mean(sent, modtype):
+    results, toks=collect_example(sent, modtype)
+    if 'norms' in results[0][0].keys():
+        new_results={key: [item['norms'] for item in value] for key, value in results.items()}
+    else:
+        new_results={key: [item['probs'] for item in value] for key, value in results.items()}
+
+    print(toks)
+    for layer, norms_list in new_results.items():
+        plt.figure(figsize=(10, 8))
+        if len(norms_list[0].size()) == 2:
+            df = pd.DataFrame(norms_list[0].numpy(), columns = toks, index = toks)
+        else:
+            combined_weights = torch.mean(norms_list[0], dim=0)
+            df = pd.DataFrame(combined_weights.numpy(), columns = toks, index = toks)
+        #sb.heatmap(norms_list[0].numpy(), annot=True, fmt=".2f", cmap="viridis",
+        #              xticklabels=toks, yticklabels=toks)
+        sb.heatmap(df, annot=True, fmt=".2f", cmap="viridis")
+        plt.title(f"Layer {layer + 1}- Attention Weights Heatmap")
+        plt.xlabel("To")
+        plt.ylabel("From")
+        plt.savefig('heatmaps/heatmap_{}.png'.format(layer), format='png', transparent=True,dpi=360, bbox_inches='tight')
+        plt.close()
+
+def main():
+    sentence = input("Enter the sentence to be tested on: ")
+    model_type = input("Enter the model type: ")
+    plot_combined_weights_mean(sentence, model_type)
+
+if __name__ == '__main__':
+    main()

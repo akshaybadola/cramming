@@ -1,17 +1,21 @@
 """Attention modules. Most code heavily stolen from the GPT-neoX implementation"""
+import typing
 import torch
-from transformers.models.bert.modeling_bert import BertSelfAttention
+from transformers.models.bert.modeling_bert import BertAttention
 
 from .embeddings import Rotary, RotarySanityCheck, RotaryEleutherAI
 from typing import Optional
 from einops.layers.torch import Rearrange
 from einops import rearrange
+import ipdb
 
 
 def get_attention_mechanism(
     idx,
     hidden_size,
     cfg_attention,
+    cfg_eps = 0,
+    cfg_hidden_dropout_prob = 0
 ):
     if cfg_attention.type == "self-attention":
         mechanism = SeqFirstSelfAttention(hidden_size, cfg_attention)  # neox
@@ -19,7 +23,7 @@ def get_attention_mechanism(
         # Sanity check 1: [Warning: This includes the output projection twice...]
         mechanism = SelfAttentionPyTorch(hidden_size, cfg_attention)  # torch default
     elif cfg_attention.type == "huggingface":
-        mechanism = BertAttentionWrapper(hidden_size, cfg_attention)  # always includes bias!
+        mechanism = BertAttentionWrapper(hidden_size, cfg_attention, cfg_eps, cfg_hidden_dropout_prob)  # always includes bias! Set output_norms to True for norm-based analysis
     elif cfg_attention.type == "flash-attention-impl":  # the fast implementation called flash
         mechanism = FlashMultiHeadAttention(hidden_size, cfg_attention)
     elif cfg_attention.type == "fourier":
@@ -61,12 +65,12 @@ class Identity(torch.nn.Module):
         return hidden_states
 
 
-class BertAttentionWrapper(BertSelfAttention):
+class BertAttentionWrapper(BertAttention):
     """mini wrapper around BERT attention from huggingface for sanity checks."""
 
     LAYOUT = "[B S H]"
 
-    def __init__(self, hidden_size, cfg_attention):
+    def __init__(self, hidden_size, cfg_attention, cfg_eps, cfg_prob):
         class config:
             pass
 
@@ -74,12 +78,17 @@ class BertAttentionWrapper(BertSelfAttention):
         config.num_attention_heads = cfg_attention.num_attention_heads
         config.attention_probs_dropout_prob = cfg_attention.dropout_prob
         config.is_decoder = False
+        
+        config.layer_norm_eps = cfg_eps
+        config.hidden_dropout_prob = cfg_prob
 
         super().__init__(config)
         self.output_dim = hidden_size
 
-    def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None):
-        return super().forward(hidden_states, attention_mask)[0]
+    def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None, output_norms: Optional[bool] = True): # Kobayashi
+        output = super().forward(hidden_states, attention_mask, output_norms=output_norms)
+        self._results.append({"scores": output[0], "probs": output[1].squeeze(0), "norms": output[5].squeeze(0)})
+        return output[0]
 
 
 class SelfAttentionPyTorch(torch.nn.Module):
@@ -224,13 +233,14 @@ class SeqFirstSelfAttention(torch.nn.Module):
 
         # change view [b * np, sq, sk]
         attention_probs = attention_probs.view(output_size[0] * output_size[1], output_size[2], -1)
+        self._results.append({"scores": attention_scores, "probs": attention_probs})
 
         # matmul: [b * np, sq, hn]
         context_layer = torch.bmm(attention_probs, value_layer.transpose(0, 1))
 
         # change view [b, np, sq, hn]
         context_layer = context_layer.view(*output_size)
-        return context_layer
+        return context_layer    # , attention_scores, attention_probs
 
     def forward(self, hidden_states, attention_mask: Optional[torch.Tensor] = None):
         # =====================
@@ -256,13 +266,14 @@ class SeqFirstSelfAttention(torch.nn.Module):
         # Attention computation
         # ==================================
         context_layer = self.attention(query_layer, key_layer, value_layer, attention_mask, self.training)
+
         # [b, np, sq, hn] --> [sq, b, np, hn]
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
 
         # [sq, b, np, hn] --> [sq, b, hp]
         # new_context_layer_shape = context_layer.size()[:-2] + (self.hidden_size,)
         context_layer = context_layer.view(context_layer.shape[0], context_layer.shape[1], self.hidden_size)
-        return context_layer
+        return context_layer    # , attention_scores, attention_probs
 
 
 class FlashMultiHeadAttention(torch.nn.Module):
